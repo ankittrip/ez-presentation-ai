@@ -15,14 +15,14 @@ const Logger = {
 // 🎨 ELITE CONSULTING THEME
 // ==========================================
 const themeColors = {
-    primary: "800020", // Dark Burgundy
-    secondary: "F8F9FA", // Ultra Light Grey
-    accent: "D84B6B", // Pink
+    primary: "800020", 
+    secondary: "F8F9FA", 
+    accent: "D84B6B", 
     accentLight: "FFF0F5",
     textLight: "FFFFFF",
-    textDark: "2B2D42", // Deep Navy/Charcoal
+    textDark: "2B2D42", 
     shadow: "E0E0E0",
-    darkCard: "1E2A38", // Premium Dark Blue/Grey
+    darkCard: "1E2A38", 
     chartPalette: ["FF4D6D", "C9184A", "4361EE", "4895EF", "4CC9F0", "3A0CA3"] 
 };
 
@@ -197,7 +197,7 @@ function renderChart(slide, slideData, pptx, index = 0) {
             let bigNum = metricParts[0];
             let aggressiveLabel = metricParts.slice(1).join(" ").toUpperCase();
 
-            // 🛡️ Y-AXIS PUSHED DOWN TO AVOID TITLE OVERLAPS
+           
             slide.addShape(pptx.shapes.ROUNDED_RECTANGLE, { 
                 x: 0.4, y: 1.45, w: 3.2, h: 2.2, fill: { color: themeColors.darkCard }, rectRadius: 0.1,
                 shadow: { type: 'outer', color: 'A0A0A0', blur: 5, offset: 3, angle: 45 }
@@ -211,7 +211,6 @@ function renderChart(slide, slideData, pptx, index = 0) {
             slide.addShape(pptx.shapes.LINE, { x: 0.8, y: 2.55, w: 2.4, h: 0, line: { color: "FFFFFF", width: 2 } });
             slide.addText(aggressiveLabel, { x: 0.4, y: 2.75, w: 3.2, h: 0.6, fontSize: 14, bold: true, color: "FFFFFF", align: "center", wrap: true });
 
-            // 🛡️ CHART Y-AXIS PUSHED DOWN
             chartOptions.x = 3.9; chartOptions.y = 1.35; chartOptions.w = 5.5; chartOptions.h = 3.3;
             chartOptions.barDir = "col";
             slide.addChart(cType, chartData, chartOptions);
