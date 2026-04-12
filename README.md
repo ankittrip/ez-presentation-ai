@@ -48,7 +48,7 @@ Testing: Jest + Supertest (100% statement coverage, robust handling of invalid/e
 ▶️ Setup & Execution Instructions
 1. Clone the Repository
 Bash
-git clone [[[Your-GitHub-Repo-Link-Here]](https://github.com/ankittrip/ez-presentation-ai)](https://github.com/ankittrip/ez-presentation-ai)
+git clone (https://github.com/ankittrip/ez-presentation-ai)](https://github.com/ankittrip/ez-presentation-ai)
 cd ez-presentation-ai
 2. Install Dependencies
 Bash
