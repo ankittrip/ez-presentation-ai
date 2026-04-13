@@ -28,14 +28,8 @@ Instead of relying solely on an LLM to generate UI (which often fails and breaks
 
 ![chart](https://github.com/user-attachments/assets/97955261-96f1-4849-9518-472abdabf7f9)
 ![Dashboard / Grid Layout Preview](https://github.com/user-attachments/assets/c5d7aa9e-59f2-458a-98b2-bc6b4ca616cd)
-<img width="1548" height="874" alt="image" src="https://github.com/user-attachments/assets/95bbaea1-ace4-4e3f-a10e-76530658ee65" />
-
-
-
-
-
-![Chart / Dynamic Layout Preview](https://github.com/user-attachments/assets/YOUR_SCREENSHOT_LINK_2)
-*(Note: Drag and drop your second screenshot here)*
+<img width="261" height="315" alt="image" src="https://github.com/user-attachments/assets/95bbaea1-ace4-4e3f-a10e-76530658ee65" />
+<img width="261" height="602" alt="image" src="https://github.com/user-attachments/assets/c7fd6823-61ad-480b-b7b8-5f1ee4597910" />
 
 ---
 
