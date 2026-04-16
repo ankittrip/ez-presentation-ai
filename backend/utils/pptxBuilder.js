@@ -1,569 +1,1470 @@
 import pptxgen from "pptxgenjs";
 import fs from "fs";
 import path from "path";
-
 import { validateAndNormalizeChart } from "./engineLogic.js";
 
+
+// ==========================================
+// 🕵️‍♂️ X-RAY LOGGER ENGINE
+// ==========================================
 const Logger = {
     info: (slideNum, msg) => console.log(`[🔵 INFO] Slide ${slideNum}: ${msg}`),
     success: (slideNum, msg) => console.log(`[🟢 SUCCESS] Slide ${slideNum}: ${msg}`),
     warn: (slideNum, msg) => console.warn(`[🟡 WARNING] Slide ${slideNum}: ${msg}`),
-    error: (slideNum, msg, err) => console.error(`[🔴 ERROR] Slide ${slideNum}: ${msg}`, err)
+    error: (slideNum, msg, err) => console.error(`[🔴 ERROR] Slide ${slideNum}: ${msg}`, err),
+    divider: () => console.log(`--------------------------------------------------`)
 };
 
+
 // ==========================================
-// 🎨 ELITE CONSULTING THEME
+// 🎨 ENTERPRISE CONFIG & CONSTANTS
 // ==========================================
-const themeColors = {
-    primary: "800020", 
-    secondary: "F8F9FA", 
-    accent: "D84B6B", 
-    accentLight: "FFF0F5",
-    textLight: "FFFFFF",
-    textDark: "2B2D42", 
-    shadow: "E0E0E0",
-    darkCard: "1E2A38", 
-    chartPalette: ["FF4D6D", "C9184A", "4361EE", "4895EF", "4CC9F0", "3A0CA3"] 
+const themes = {
+    "Ghost_Research_UAE": {
+        primary: "D32F2F", secondary: "F8F9FA", accent: "1E2A38", accentLight: "FFEBEE",
+        textLight: "FFFFFF", textDark: "1E2A38", darkCard: "1E2A38", bgFolder: "assets"
+    },
+    "Variation_Blue": {      
+        primary: "005A9C", secondary: "F8F9FA", accent: "F2A900", accentLight: "E6F2FF",
+        textLight: "FFFFFF", textDark: "2B2D42", darkCard: "003366", bgFolder: "assets_variation"
+    }
 };
 
+
+const activeTheme = themes["Ghost_Research_UAE"];
+const themeColors = activeTheme;
+
+
+const LAYOUT = { marginX: 0.5, marginY: 1.2, maxW: 9.0, maxH: 5.625 };
+const NEGATIVE_KEYWORDS = ["risk", "challenge", "issue", "problem", "failure", "loss", "delay", "overrun", "threat", "con"];
+
+
 // ==========================================
-// 🛠️ 1. SMART AGENDA ENGINE
+// 🧠 HELPERS & SANITIZATION
 // ==========================================
-function renderAgenda(slide, slideData, pptx) {
-    if (!slideData.content || slideData.content.length === 0) return;
+const extractText = (pt) => typeof pt === 'string' ? pt : (pt.text || pt.title || pt.heading || "");
+const smartWrap = (text, maxChars = 20) => (!text) ? "" : (text.length <= maxChars ? text : text.substring(0, maxChars).trim() + "..");
 
-    const items = slideData.content;
-    const totalItems = items.length;
-    const activeIndex = slideData.activeIndex !== undefined ? slideData.activeIndex : Math.floor(totalItems / 2.5);
 
-    const getDynamicFontSize = (text, baseSize) => {
-        if (text.length > 60) return baseSize - 3; 
-        if (text.length > 40) return baseSize - 1.5;
-        return baseSize;
-    };
+function deduplicateItems(items) {
+    const seen = new Set();
+    return items.filter(item => {
+        const key = typeof item === 'string' ? item.trim().toLowerCase() : (item.heading || "").trim().toLowerCase();
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+}
 
-    let layout = "single-column";
-    if (totalItems <= 3) layout = "centered";
-    else if (totalItems <= 6) layout = "single-column";
-    else if (totalItems <= 10) layout = "two-column";
-    else layout = "multi-grid"; 
 
-    if (layout === "centered") {
-        let startY = totalItems === 1 ? 2.5 : (totalItems === 2 ? 2.0 : 1.5);
-        let stepY = 1.2; 
-        let nodeSize = 0.55;
-        let nodeX = 2.0; 
 
-        if (totalItems > 1) {
-            slide.addShape(pptx.shapes.LINE, { x: nodeX + (nodeSize / 2), y: startY + (nodeSize / 2), w: 0, h: (totalItems - 1) * stepY, line: { color: '#E0E0E0', width: 2, dashType: "dash" } });
+
+//DECISION ENGINE
+function chooseVisualLayout(slideData) {
+    Logger.info(slideData.slideNumber, `[VISUAL ENGINE] Analyzing data for layout...`);
+
+
+    const hasProcess = slideData.processItems && slideData.processItems.length > 0;
+    const hasGrid = slideData.gridItems && slideData.gridItems.length > 0;
+    const hasMetrics = slideData.highlightMetrics && slideData.highlightMetrics.length > 0;
+   
+    if (hasGrid) {
+        const isVersus = slideData.gridItems.some(it => NEGATIVE_KEYWORDS.some(kw => (it.heading || "").toLowerCase().includes(kw)));
+        if (isVersus) return "COMPARISON_SPLIT";
+       
+        const isExecutive = slideData.gridItems.length >= 4 || (slideData.title || "").toLowerCase().includes("summary");
+        if (isExecutive) return "EXECUTIVE_CARDS";
+       
+        if (slideData.gridItems.length >= 4 && ((slideData.title || "").toLowerCase().includes("volume") || (slideData.title || "").toLowerCase().includes("investment"))) {
+            return "ACCENTURE_DATA_GRID";
         }
-
-        items.forEach((item, i) => {
-            let isCurrent = i === activeIndex;
-            let fontSize = getDynamicFontSize(item, isCurrent ? 24 : 20);
-
-            slide.addShape(pptx.shapes.ROUNDED_RECTANGLE, {
-                x: nodeX, y: startY + (i * stepY), w: nodeSize, h: nodeSize,
-                fill: { color: isCurrent ? themeColors.primary : "F8F8F8" },
-                line: isCurrent ? null : { color: '#CCCCCC', width: 1.5 },
-                rectRadius: 0.15, shadow: isCurrent ? { type: 'outer', color: 'A0A0A0', blur: 5, offset: 3, angle: 45 } : null
-            });
-            slide.addText(String(i + 1), { x: nodeX, y: startY + (i * stepY), w: nodeSize, h: nodeSize, fontSize: 16, bold: true, color: isCurrent ? "FFFFFF" : themeColors.textDark, align: "center", valign: "middle" });
-            slide.addText(item, { x: nodeX + 1.0, y: startY + (i * stepY), w: 5.5, h: nodeSize, fontSize: fontSize, color: isCurrent ? themeColors.primary : themeColors.textDark, bold: isCurrent, valign: "middle", wrap: true, autoFit: true, lineSpacing: 24 });
-        });
+       
+        return "PREMIUM_GRID";
     }
-    else if (layout === "single-column") {
-        let startY = 1.3;
-        let stepY = totalItems === 6 ? 0.65 : 0.85; 
-        let nodeSize = 0.45;
-        let nodeX = 1.3;
 
-        slide.addShape(pptx.shapes.LINE, { x: nodeX + (nodeSize / 2), y: startY + (nodeSize / 2), w: 0, h: (totalItems - 1) * stepY, line: { color: '#E0E0E0', width: 2, dashType: "dash" } });
 
-        items.forEach((item, i) => {
-            let isCurrent = i === activeIndex;
-            let fontSize = getDynamicFontSize(item, isCurrent ? 20 : 18);
-
-            slide.addShape(pptx.shapes.ROUNDED_RECTANGLE, {
-                x: nodeX, y: startY + (i * stepY), w: nodeSize, h: nodeSize,
-                fill: { color: isCurrent ? themeColors.primary : "F8F8F8" },
-                line: isCurrent ? null : { color: '#CCCCCC', width: 1.5 },
-                rectRadius: 0.15, shadow: isCurrent ? { type: 'outer', color: 'A0A0A0', blur: 4, offset: 2, angle: 45 } : null
-            });
-            slide.addText(String(i + 1), { x: nodeX, y: startY + (i * stepY), w: nodeSize, h: nodeSize, fontSize: 14, bold: true, color: isCurrent ? "FFFFFF" : themeColors.textDark, align: "center", valign: "middle" });
-            slide.addText(item, { x: nodeX + 0.9, y: startY + (i * stepY), w: 6.5, h: nodeSize, fontSize: fontSize, color: isCurrent ? themeColors.primary : themeColors.textDark, bold: isCurrent, valign: "middle", wrap: true, autoFit: true, lineSpacing: 22 });
-        });
+    if (hasProcess) {
+        if (slideData.processItems.length >= 4) return "ACCENTURE_RED_PILLARS";
+        return "CHEVRON_FLOW";
     }
-    else {
-        const mid = Math.ceil(totalItems / 2);
-        const leftItems = items.slice(0, mid);
-        const rightItems = items.slice(mid);
 
-        let startY = 1.5;
-        let stepY = layout === "multi-grid" ? 0.50 : 0.75; 
-        let nodeSize = layout === "multi-grid" ? 0.35 : 0.40;
-        let baseFontSize = layout === "multi-grid" ? 14 : 16;
-        let activeSize = layout === "multi-grid" ? 16 : 18;
 
-        const renderCol = (colItems, startX, startIndex) => {
-            if (colItems.length === 0) return;
-            slide.addShape(pptx.shapes.LINE, { x: startX + (nodeSize / 2), y: startY + (nodeSize / 2), w: 0, h: (colItems.length - 1) * stepY, line: { color: '#E0E0E0', width: 2, dashType: "dash" } });
-
-            colItems.forEach((item, i) => {
-                let absoluteIndex = startIndex + i;
-                let isCurrent = absoluteIndex === activeIndex; 
-                let fontSize = getDynamicFontSize(item, isCurrent ? activeSize : baseFontSize);
-
-                slide.addShape(pptx.shapes.ROUNDED_RECTANGLE, {
-                    x: startX, y: startY + (i * stepY), w: nodeSize, h: nodeSize, fill: { color: isCurrent ? themeColors.primary : "F8F8F8" }, line: isCurrent ? null : { color: '#CCCCCC', width: 1.5 }, rectRadius: 0.15, shadow: isCurrent ? { type: 'outer', color: 'A0A0A0', blur: 3, offset: 2, angle: 45 } : null
-                });
-                slide.addText(String(absoluteIndex + 1), { x: startX, y: startY + (i * stepY), w: nodeSize, h: nodeSize, fontSize: 12, bold: true, color: isCurrent ? "FFFFFF" : themeColors.textDark, align: "center", valign: "middle" });
-                slide.addText(item, { x: startX + nodeSize + 0.3, y: startY + (i * stepY), w: 3.2, h: nodeSize, fontSize: fontSize, color: isCurrent ? themeColors.primary : themeColors.textDark, bold: isCurrent, valign: "middle", wrap: true, autoFit: true, lineSpacing: 18 });
-            });
-        };
-        renderCol(leftItems, 1.0, 0); 
-        renderCol(rightItems, 5.2, mid); 
-    }
+    if (slideData.requiresChart) return "CHART_SLIDE";
+    if (slideData.layoutType === "Agenda") return "AGENDA_SLIDE";
+    if (hasMetrics) return "WOW_SLIDE";
+   
+    return "STANDARD_CLEAN";
 }
 
 // ==========================================
-// 🛠️ 2. SMART CHART ENGINE
+// 🛠️ RENDER STANDARD CONTENT (FINAL CLEAN)
 // ==========================================
-function renderChart(slide, slideData, pptx, index = 0) {
-    let validatedData = validateAndNormalizeChart(
-        slideData.chartLabels, 
-        slideData.chartValues, 
-        slideData.chartType || "bar", 
-        slideData.title,
-        slideData.chartInsight
-    );
-    let safeType = validatedData.type;
-    let safeInsight = validatedData.insight;
-    let chartData = [{ name: slideData.chartTitle || "Data", labels: validatedData.labels, values: validatedData.values }];
-    
-    let cType = pptx.charts.BAR; 
-    if (safeType === "doughnut") cType = pptx.charts.DOUGHNUT;
-    else if (safeType === "line") cType = pptx.charts.LINE;
+function renderStandardContent(slide, slideData, pptx) {
 
-    let styleLayout = "INSIGHT_TOP"; 
+    const safeContent = deduplicateItems(
+        (slideData.content || []).map(extractText)
+    ).filter(Boolean);
 
-    if (slideData.content && slideData.content.length > 0) {
-        styleLayout = "SPLIT_VIEW";
-    } 
-    else if (safeType === "doughnut") {
-        styleLayout = "SPLIT_VIEW";
-    } 
-    else if (slideData.highlightMetrics && slideData.highlightMetrics.length > 0) {
-        styleLayout = "METRIC_COMBO";
-    } 
-    else if (safeType === "line") {
-        styleLayout = "MINIMAL_LINE";
-    } 
-    else if (safeInsight && safeInsight.length > 20) {
-        styleLayout = "SPLIT_VIEW";
-    }
+    const isLongParagraph =
+        safeContent.length === 1 && safeContent[0].length > 120;
 
-    let chartOptions = {
-        showValue: true, showTitle: false, chartColors: themeColors.chartPalette, 
-        valAxisLabelFontSize: 11, catAxisLabelFontSize: 11, 
-        valAxisLabelColor: themeColors.textDark, catAxisLabelColor: themeColors.textDark
-    };
+    const isSingleLine =
+        safeContent.length === 1 && safeContent[0].length <= 120;
 
-    switch(styleLayout) {
-        case "SPLIT_VIEW":
-            chartOptions.x = 0.5; chartOptions.y = 1.2; chartOptions.w = 5.0; chartOptions.h = 4.0;
-            if (cType === pptx.charts.DOUGHNUT) {
-                chartOptions.holeSize = 60; chartOptions.showLegend = false; chartOptions.dataLabelFormatCode = "0%";
-            } else { chartOptions.barDir = "col"; }
-            slide.addChart(cType, chartData, chartOptions);
+    // ==========================================
+    // 🔥 CASE 1: LONG PARAGRAPH
+    // ==========================================
+    if (isLongParagraph) {
 
-            slide.addShape(pptx.shapes.ROUNDED_RECTANGLE, { x: 5.8, y: 1.5, w: 3.8, h: 3.2, fill: { color: themeColors.darkCard }, rectRadius: 0.1 });
-            slide.addText("💡 STRATEGIC FOCUS", { x: 6.0, y: 1.8, w: 3.4, h: 0.4, fontSize: 14, bold: true, color: "FF4D6D" });
+        let cleanText = safeContent[0].replace(/\s+/g, " ").trim();
 
-            if (slideData.content && slideData.content.length > 0) {
-                let safeBullets = slideData.content.map(pt => {
-                    let cleanStr = (typeof pt === "string" ? pt : (pt.title || pt.text || ""));
-                    if (cleanStr.length > 120) cleanStr = cleanStr.substring(0, 117) + "..."; 
-                    return { text: cleanStr, options: { bullet: { color: "FF4D6D" } } };
-                });
-                slide.addText(safeBullets, { x: 6.0, y: 2.3, w: 3.4, h: 2.0, fontSize: 13, color: "FFFFFF", align: "left", valign: "top", lineSpacing: 18 });
-            } else {
-                slide.addText(safeInsight || "Strategic analysis based on data distribution.", { x: 6.0, y: 2.3, w: 3.4, h: 2.0, fontSize: 15, color: "FFFFFF", align: "left", valign: "top", lineSpacing: 22 });
-            }
-            break;
+        slide.addShape(pptx.ShapeType.rect, {
+            x: 1,
+            y: 1.8,
+            w: 0.08,
+            h: 2.5,
+            fill: { color: themeColors.primary }
+        });
 
-        case "METRIC_COMBO":
-            let metricParts = slideData.highlightMetrics[0].split(" ");
-            let bigNum = metricParts[0];
-            let aggressiveLabel = metricParts.slice(1).join(" ").toUpperCase();
+        slide.addText(cleanText, {
+            x: 1.3,
+            y: 1.8,
+            w: 7.5,
+            h: 3.5,
+            fontSize: 18,
+            wrap: true,
+            lineSpacing: 28,
+            color: themeColors.textDark
+        });
 
-           
-            slide.addShape(pptx.shapes.ROUNDED_RECTANGLE, { 
-                x: 0.4, y: 1.45, w: 3.2, h: 2.2, fill: { color: themeColors.darkCard }, rectRadius: 0.1,
-                shadow: { type: 'outer', color: 'A0A0A0', blur: 5, offset: 3, angle: 45 }
-            });
-
-            let heroFontSize = 56;
-            if (bigNum.length > 8) heroFontSize = 34;      
-            else if (bigNum.length > 5) heroFontSize = 42; 
-
-            slide.addText(bigNum, { x: 0.4, y: 1.65, w: 3.2, h: 1.0, fontSize: heroFontSize, bold: true, color: "FF4D6D", align: "center" });
-            slide.addShape(pptx.shapes.LINE, { x: 0.8, y: 2.55, w: 2.4, h: 0, line: { color: "FFFFFF", width: 2 } });
-            slide.addText(aggressiveLabel, { x: 0.4, y: 2.75, w: 3.2, h: 0.6, fontSize: 14, bold: true, color: "FFFFFF", align: "center", wrap: true });
-
-            chartOptions.x = 3.9; chartOptions.y = 1.35; chartOptions.w = 5.5; chartOptions.h = 3.3;
-            chartOptions.barDir = "col";
-            slide.addChart(cType, chartData, chartOptions);
-            
-            if (safeInsight) slide.addText(`Note: ${safeInsight}`, { x: 3.9, y: 4.75, w: 5.5, h: 0.3, fontSize: 10, italic: true, color: themeColors.textDark });
-            break;
-
-        case "MINIMAL_LINE":
-            chartOptions.x = 0.5; chartOptions.y = 1.2; chartOptions.w = 9.0; chartOptions.h = 3.2;
-            chartOptions.lineSmooth = true;
-            slide.addChart(cType, chartData, chartOptions);
-            if (safeInsight) {
-                slide.addShape(pptx.shapes.ROUNDED_RECTANGLE, { x: 0.5, y: 4.6, w: 9.0, h: 0.5, fill: { color: themeColors.accentLight } });
-                slide.addText(`📈 TREND: ${safeInsight}`, { x: 0.6, y: 4.6, w: 8.8, h: 0.5, fontSize: 14, bold: true, color: themeColors.primary, align: "center" });
-            }
-            break;
-
-        default:
-            if (safeInsight) {
-                slide.addShape(pptx.shapes.RECTANGLE, { x: 0.5, y: 1.0, w: 0.05, h: 0.6, fill: { color: themeColors.accent } }); 
-                slide.addText(safeInsight, { x: 0.7, y: 1.0, w: 8.5, h: 0.6, fontSize: 19, bold: true, color: themeColors.textDark });
-            }
-            chartOptions.x = 0.5; chartOptions.y = 1.8; chartOptions.w = 9.0; chartOptions.h = 3.0;
-            slide.addChart(cType, chartData, chartOptions);
-            break;
-    }
-}
-
-// ==========================================
-// 🛠️ 3. PREMIUM GRID & OUTCOME ENGINE (DYNAMIC OVERLAP FIX)
-// ==========================================
-function renderGridCards(slide, slideData, pptx) {
-    // 🛡️ DYNAMIC Y-AXIS: Checks if title is long (2 lines) and pushes cards down!
-    const isLongTitle = (slideData.title || "").length > 45;
-    const startY = isLongTitle ? 1.8 : 1.4; 
-    const cardH = isLongTitle ? 3.1 : 3.4; // Reduces height slightly to not hit bottom
-    
-    let rawItems = [];
-    const source = (slideData.gridItems && slideData.gridItems.length > 0) ? slideData.gridItems : (slideData.content || []);
-    
-    rawItems = source.map(pt => {
-        if (typeof pt === 'string') {
-            const parts = pt.split(":");
-            return { heading: parts[0]?.trim() || "Strategic Insight", text: parts.slice(1).join(":")?.trim() || pt };
-        }
-        return { heading: pt.title || pt.heading || "Key Pillar", text: pt.text || "" };
-    }).filter(it => 
-        !it.text.toLowerCase().includes("processing") && 
-        !it.text.toLowerCase().includes("unavailable") &&
-        it.text.length > 2
-    );
-
-    if (rawItems.length === 0) { renderStandardContent(slide, slideData, pptx); return; }
-
-    const safeTitle = (slideData.title || "").toLowerCase();
-    
-    const isComparison = safeTitle.includes("outcome") || 
-                         rawItems.some(it => {
-                             const h = (it.heading || "").toLowerCase();
-                             return h.includes("success") || h.includes("challenge") || h.includes("risk");
-                         });
-
-    if (isComparison && rawItems.length >= 2) {
-        slide.addShape(pptx.shapes.ROUNDED_RECTANGLE, { x: 0.5, y: startY, w: 4.3, h: cardH, fill: { color: "F8F9FA" }, line: { color: "28a745", width: 1.5 }, rectRadius: 0.05 });
-        slide.addText("✅ KEY SUCCESSES", { x: 0.7, y: startY + 0.2, w: 3.8, fontSize: 15, bold: true, color: "28a745" });
-
-        slide.addShape(pptx.shapes.ROUNDED_RECTANGLE, { x: 5.2, y: startY, w: 4.3, h: cardH, fill: { color: "F8F9FA" }, line: { color: themeColors.accent, width: 1.5 }, rectRadius: 0.05 });
-        slide.addText("⚠️ STRATEGIC CHALLENGES", { x: 5.4, y: startY + 0.2, w: 3.8, fontSize: 15, bold: true, color: themeColors.accent });
-
-        if (slideData.highlightMetrics && slideData.highlightMetrics.length > 0) {
-            slide.addShape(pptx.shapes.ROUNDED_RECTANGLE, { x: 3.5, y: 0.9, w: 3.0, h: 0.7, fill: { color: themeColors.primary }, rectRadius: 0.5, shadow: { type: 'outer', color: 'A0A0A0', blur: 4, offset: 2, angle: 45 } });
-            slide.addText(slideData.highlightMetrics[0], { x: 3.5, y: 0.9, w: 3.0, h: 0.7, fontSize: 16, bold: true, color: "FFFFFF", align: "center", valign: "middle" });
-        }
-
-        const left = rawItems.filter(it => !(it.heading || "").toLowerCase().includes("challenge")).slice(0, 3);
-        const right = rawItems.filter(it => (it.heading || "").toLowerCase().includes("challenge")).slice(0, 3);
-        
-        slide.addText(left.map(it => ({ text: `• ${it.heading}: ${it.text}`, options: { fontSize: 11, lineSpacing: 20 } })), { x: 0.7, y: startY + 0.7, w: 3.9, valign: 'top', h: 2.3 });
-        slide.addText(right.map(it => ({ text: `• ${it.heading}: ${it.text}`, options: { fontSize: 11, lineSpacing: 20 } })), { x: 5.4, y: startY + 0.7, w: 3.9, valign: 'top', h: 2.3 });
         return;
     }
 
-    const items = rawItems.slice(0, 4);
-    const count = items.length;
+    // ==========================================
+    // 🔥 CASE 2: HERO TEXT
+    // ==========================================
+    if (isSingleLine) {
 
-    if (count === 2) {
-        items.forEach((item, i) => {
-            const cX = 0.5 + (i * 4.6);
-            slide.addShape(pptx.shapes.ROUNDED_RECTANGLE, { x: cX, y: startY, w: 4.4, h: cardH, fill: { color: "F8F9FA" }, line: { color: themeColors.primary, width: 1.5 }, rectRadius: 0.05 });
-            slide.addShape(pptx.shapes.RECTANGLE, { x: cX, y: startY, w: 4.4, h: 0.5, fill: { color: themeColors.primary } });
-            slide.addText(item.heading.toUpperCase(), { x: cX, y: startY, w: 4.4, h: 0.5, fontSize: 13, bold: true, color: "FFFFFF", align: "center" });
-            slide.addText(item.text, { x: cX + 0.2, y: startY + 0.7, w: 4.0, h: cardH - 0.8, fontSize: 14, color: themeColors.textDark, lineSpacing: 22, valign: "top" });
+        slide.addText(safeContent[0], {
+            x: 1.5,
+            y: 2,
+            w: 7,
+            h: 2.5,
+            fontSize: 28,
+            bold: true,
+            align: "center",
+            color: themeColors.primary
         });
-    } 
-    else {
-        items.forEach((item, index) => {
-            let row = Math.floor(index / 2); let col = index % 2;
-            let cX = 0.5 + (col * 4.6); 
-            let stepY = isLongTitle ? 1.6 : 1.8; 
-            let cY = startY + (row * stepY); 
-            let cW = (count === 3 && index === 2) ? 8.8 : 4.2; 
-            let cH = isLongTitle ? 1.4 : 1.6;
-            if (count === 3 && index === 2) cX = 0.5;
 
-            slide.addShape(pptx.shapes.ROUNDED_RECTANGLE, { x: cX, y: cY, w: cW, h: cH, fill: { color: "F8F9FA" }, line: { color: themeColors.primary, width: 1 }, rectRadius: 0.05, shadow: { type: 'outer', color: 'E5E5E5', blur: 3, offset: 2, angle: 45 } });
-            slide.addShape(pptx.shapes.RECTANGLE, { x: cX, y: cY, w: cW, h: 0.06, fill: { color: themeColors.primary } }); 
-            slide.addText(item.heading, { x: cX + 0.2, y: cY + 0.15, w: cW - 0.4, h: 0.3, fontSize: 14, bold: true, color: themeColors.primary });
+        return;
+    }
 
-            const detailText = item.text && item.text.length > 5 ? item.text : `Critical strategic pillar focusing on ${item.heading} to drive enterprise-wide transformation.`;
-            slide.addText(detailText, { x: cX + 0.2, y: cY + 0.5, w: cW - 0.4, h: 0.9, fontSize: 11, color: themeColors.textDark, valign: "top", lineSpacing: 18 });
+    // ==========================================
+    // 🔥 CASE 3: EXECUTIVE GRID (FINAL)
+    // ==========================================
+
+    const items = safeContent.slice(0, 4);
+
+    const cardW = 4.2;
+    const cardH = 1.4;
+    const startY = 1.3;
+
+    items.forEach((pt, i) => {
+
+        let row = Math.floor(i / 2);
+        let col = i % 2;
+
+        let x = 0.6 + col * (cardW + 0.4);
+        let y = startY + row * (cardH + 0.4);
+
+        let clean = pt.replace(/^[•\-\s]+/, "").trim();
+
+        // ==========================================
+        // 🧠 SMART SPLIT
+        // ==========================================
+
+        let parts = clean.split(/[:\-]/);
+
+        let rawTitle = (parts[0] || "").trim();
+        let descText = parts.slice(1).join(" ").trim();
+
+        // 🔥 Title short + clean
+        let titleText = rawTitle.split(" ").slice(0, 4).join(" ").toUpperCase();
+
+        // 🔥 Prevent duplication
+        if (!descText || descText.toLowerCase() === rawTitle.toLowerCase()) {
+            descText = rawTitle.split(" ").slice(4).join(" ");
+        }
+
+        // ==========================================
+        // 🔹 CARD
+        // ==========================================
+
+        slide.addShape(pptx.ShapeType.roundRect, {
+            x, y, w: cardW, h: cardH,
+            fill: { color: "#F9FAFB" },
+            rectRadius: 0.1,
+            shadow: {
+                type: "outer",
+                blur: 6,
+                offset: 2,
+                angle: 45,
+                color: "000000",
+                opacity: 0.1
+            }
         });
+
+        // 🔴 NUMBER
+        slide.addText(`0${i + 1}`, {
+            x: x + 0.3,
+            y: y + 0.3,
+            w: 0.6,
+            h: 0.6,
+            fontSize: 16,
+            bold: true,
+            color: themeColors.primary
+        });
+
+        // 🔴 TITLE
+        slide.addText(titleText, {
+            x: x + 1,
+            y: y + 0.3,
+            w: 3,
+            h: 0.5,
+            fontSize: 16,
+            bold: true,
+            color: themeColors.primary
+        });
+
+        // 🔹 DESCRIPTION
+        if (descText) {
+            slide.addText(descText, {
+                x: x + 1,
+                y: y + 0.8,
+                w: 3,
+                h: 0.6,
+                fontSize: 13,
+                wrap: true,
+                color: themeColors.textDark
+            });
+        }
+
+    });
+}
+
+
+
+// ==========================================
+// 🛡️ SAFE SHAPE WRAPPER (PRO VERSION)
+// ==========================================
+function safeShape(slide, type, config = {}, meta = {}) {
+    try {
+
+        // 🔹 Basic validation (prevent undefined crashes)
+        if (!slide || !type) {
+            throw new Error("Invalid slide or shape type");
+        }
+
+        // 🔹 Auto-fallback defaults (layout safety)
+        const safeConfig = {
+            x: config.x ?? 0,
+            y: config.y ?? 0,
+            w: config.w ?? 1,
+            h: config.h ?? 1,
+            ...config
+        };
+
+        // 🔹 Render shape
+        return slide.addShape(type, safeConfig);
+
+    } catch (err) {
+
+        // 🔥 Structured logging (not random console.log)
+        console.error("❌ [SAFE SHAPE ERROR]", {
+            slide: meta.slideNumber || "unknown",
+            type,
+            config,
+            message: err.message
+        });
+
+        // 🔹 Soft fallback → invisible placeholder (prevents layout break)
+        try {
+            return slide.addShape(type, {
+                x: config?.x || 0,
+                y: config?.y || 0,
+                w: 0.01,
+                h: 0.01,
+                fill: { color: "FFFFFF", transparency: 100 }
+            });
+        } catch {
+            return null; // final fail-safe
+        }
     }
 }
 
-// 🚀 4. SINGLE HERO LAYOUT 
-function renderSingleHeroLayout(slide, slideData, pptx, fallbackItem) {
-    let heroText = fallbackItem?.heading || slideData.title;
-    let heroVal = "$865M"; 
-    slide.addShape(pptx.shapes.ROUNDED_RECTANGLE, { x: 2.0, y: 1.5, w: 6.0, h: 3.0, fill: { color: "F8F9FA" }, line: { color: themeColors.primary, width: 2 }, rectRadius: 0.1 });
-    slide.addText(heroVal, { x: 2.0, y: 1.8, w: 6.0, h: 1.2, fontSize: 60, bold: true, color: themeColors.primary, align: "center" });
-    slide.addText(heroText.toUpperCase(), { x: 2.0, y: 3.2, w: 6.0, h: 0.8, fontSize: 18, bold: true, color: themeColors.textDark, align: "center" });
+//DONE
+// ==========================================
+// 🛠️ SMART AGENDA ENGINE (ULTIMATE PRO FIXED)
+// ==========================================
+function renderAgenda(slide, slideData, pptx) {
+
+
+    // 🔹 Debug log → helps track slide rendering in large pipelines
+    Logger.info(slideData.slideNumber, `=> Executing [renderAgenda]`);
+
+
+    // ==========================================
+    // 🔹 STEP 1: CLEAN + PREPARE DATA
+    // ==========================================
+    let items = deduplicateItems(
+        (slideData.content || []).map(extractText)
+    )
+    // Remove empty / very small strings (UI safety)
+    .filter(it => it.length > 2);
+
+
+    if (items.length === 0) return;
+
+
+    // Limit items → UI design constraint (avoid overflow)
+    const totalItems = Math.min(items.length, 8);
+
+
+    // Decide layout → 1 column (simple) OR 2 column (grid)
+    const maxPerRow = totalItems <= 3 ? 1 : 2;
+
+
+    // ==========================================
+    // 🔹 STEP 2: GRID SYSTEM (CORE LAYOUT ENGINE)
+    // ==========================================
+    const slideWidth = 10;
+
+
+    // Dynamic margins → tighter for grid, wider for single column
+    const sideMargin = maxPerRow === 2 ? 0.6 : 1.5;
+
+
+    const gapX = 0.6; // horizontal spacing between cards
+
+
+    const totalRows = Math.ceil(totalItems / maxPerRow);
+
+
+    // Dynamic vertical scaling → prevents crowding
+    let rowH = totalRows >= 4 ? 0.75 : 1.05;
+    let gapY = totalRows >= 4 ? 0.15 : 0.28;
+    let startY = totalRows >= 4 ? 1.3 : 1.6;
+
+
+    // Total usable width inside slide
+    const usableWidth = slideWidth - (sideMargin * 2);
+
+
+    // Auto column width (IMPORTANT: no hardcoding)
+    const baseColW = maxPerRow === 2
+        ? (usableWidth - gapX) / 2
+        : usableWidth;
+
+
+    // Active agenda item (highlight)
+    const activeIndex = slideData.activeIndex ?? 0;
+
+
+    // Remove numbering like "1. Title"
+    const cleanAgendaText = (text) => text.replace(/^\d+\.\s*/, '');
+
+
+    // ==========================================
+    // 🔹 STEP 3: RENDER LOOP (UI BUILDING)
+    // ==========================================
+    items.slice(0, 8).forEach((item, index) => {
+
+
+        // Grid positioning
+        let row = Math.floor(index / maxPerRow);
+        let col = index % maxPerRow;
+
+
+        // Special case → last item full width (odd count layout fix)
+        const isLastSingle =
+            (totalItems % 2 === 1) &&
+            (index === totalItems - 1) &&
+            maxPerRow === 2;
+
+
+        const isActive = index === activeIndex;
+
+
+        // Dynamic width handling
+        let colW = isLastSingle ? usableWidth : baseColW;
+
+
+        // Base X position
+        let baseX = isLastSingle
+            ? sideMargin
+            : sideMargin + (col * (baseColW + gapX));
+
+
+        // Base Y position
+        let baseY = startY + (row * (rowH + gapY));
+
+
+        // ==========================================
+        // 🔹 STEP 4: ACTIVE STATE TRANSFORM SYSTEM
+        // ==========================================
+        // ⚠️ Keep values small → avoids layout breaking
+        const shiftX = isActive ? -0.03 : 0;  // slight left shift
+        const shiftY = isActive ? -0.02 : 0;  // slight upward shift
+        const expandW = isActive ? 0.06 : 0;  // width increase
+        const expandH = isActive ? 0.04 : 0;  // height increase
+
+
+        const cX = baseX + shiftX;
+        const cY = baseY + shiftY;
+
+
+        // ==========================================
+        // 🔹 STEP 5: CARD BACKGROUND
+        // ==========================================
+        // NOTE:
+        // Outer border can break rounded corners → use carefully
+        slide.addShape(pptx.ShapeType.roundRect, {
+            x: cX,
+            y: cY,
+            w: colW + expandW,
+            h: rowH + expandH,
+            fill: { color: isActive ? "#FFF7F6" : "#FCFCFC" },
+
+
+            // Active border only (visual hierarchy)
+            line: {
+                color: isActive ? themeColors.primary : "#FFFFFF",
+                width: isActive ? 2 : 0
+            },
+
+
+            rectRadius: 0.06, // corner roundness
+
+
+            // Shadow → depth + premium feel
+            shadow: {
+                type: 'outer',
+                blur: isActive ? 14 : 6,
+                offset: isActive ? 5 : 2,
+                angle: 45,
+                color: '000000',
+                opacity: isActive ? 0.22 : 0.1
+            }
+        });
+
+
+        // ==========================================
+        // 🔹 STEP 6: LEFT ACCENT STRIP
+        // ==========================================
+        // Branding + visual anchor
+        slide.addShape(pptx.ShapeType.rect, {
+            x: cX + 0.015, // inset for premium alignment
+            y: cY,
+            w: isActive ? 0.055 : 0.035,
+            h: rowH + expandH,
+            fill: { color: themeColors.primary }
+        });
+
+
+        // ==========================================
+        // 🔹 STEP 7: NUMBER (01, 02...)
+        // ==========================================
+        slide.addText(`0${index + 1}`, {
+            x: cX + 0.18,
+            y: cY,
+            w: 0.7,
+            h: rowH + expandH,
+            fontSize: isActive ? 26 : (totalRows >= 4 ? 20 : 24),
+            bold: true,
+            color: themeColors.primary,
+            opacity: isActive ? 1 : 0.8,
+            align: "center",
+            valign: "middle"
+        });
+
+
+        // ==========================================
+        // 🔹 STEP 8: TEXT CONTENT
+        // ==========================================
+        let cleanText = cleanAgendaText(item);
+
+
+        // Wrap text → prevents overflow
+        let truncatedText = smartWrap(cleanText, 60);
+
+
+        slide.addText(truncatedText, {
+            x: cX + 0.95,
+            y: cY,
+            w: (colW + expandW) - 1.1,
+            h: rowH + expandH,
+            fontSize: isActive ? 14 : (totalRows >= 4 ? 11 : 13),
+            bold: true,
+
+
+            // Better contrast for active card
+            color: isActive ? "#1F2937" : themeColors.textDark,
+
+
+            align: "left",
+            valign: "middle",
+            wrap: true
+        });
+
+
+    });
 }
 
 // ==========================================
-// 🛠️ 4. ROADMAP / TIMELINE ENGINE
+// 📊 SMART CHART RENDER (DYNAMIC LAYOUT FIXED)
 // ==========================================
-function renderProcessFlow(slide, slideData, pptx) {
-    const contentArr = (slideData.content || []).filter(c => !String(c).toLowerCase().includes("unavailable"));
+function renderChart(slide, slideData, pptx, slideIndex = 0) {
 
-    if (contentArr.length === 0) {
-        Logger.warn(slideData.slideNumber, "Fallback triggered.");
+    Logger.info(slideData.slideNumber, `=> Executing [renderChart]`);
+
+    let validatedData = validateAndNormalizeChart(
+        slideData.chartLabels,
+        slideData.chartValues,
+        slideData.chartType || "bar",
+        slideData.title,
+        slideData.chartInsight
+    );
+
+    // 🔒 Fallback safety
+    if (!validatedData) {
         renderStandardContent(slide, slideData, pptx);
         return;
     }
 
-    const steps = contentArr.slice(0, 5);
-    const gap = 0.2;
-    const boxW = (9.0 - ((steps.length - 1) * gap)) / steps.length;
-    let startX = 0.5;
-    
-    if (steps.length > 1) {
-        slide.addShape(pptx.shapes.LINE, { x: startX + (boxW / 2), y: 2.2, w: (steps.length - 1) * (boxW + gap), h: 0, line: { color: themeColors.primary, width: 3 } });
-    }
+    // ===============================
+    // 🔥 CHART TYPE
+    // ===============================
+    let cType =
+        validatedData.type === "doughnut"
+            ? pptx.charts.DOUGHNUT
+            : validatedData.type === "line"
+            ? pptx.charts.LINE
+            : pptx.charts.BAR;
 
-    steps.forEach((step, i) => {
-        let currX = startX + i * (boxW + gap);
-        
-        let phase = `PHASE 0${i + 1}`;
-        let heading = "Key Milestone";
-        let impact = "Strategic initiative details.";
+    // ===============================
+    // 🔥 DATA PREP
+    // ===============================
+    const values = (validatedData.values || []).map(v => (v == null ? 0 : v));
+    const labels = validatedData.labels || [];
 
-        if (typeof step === "string") {
-            const parts = step.split(":");
-            if (parts.length > 1) { heading = parts[0].trim(); impact = parts.slice(1).join(":").trim(); } 
-            else { heading = step.substring(0, 25); impact = step; }
-        } else {
-            phase = (step.title || step.phase || `PHASE 0${i + 1}`).toUpperCase();
-            heading = step.heading || step.title || "Milestone";
-            impact = step.text || step.impact || "Analysis of process impact.";
-        }
+    const minVal = Math.min(...values);
+    const maxVal = Math.max(...values);
+    const padding = (maxVal - minVal) * 0.1;
 
-        let pillW = boxW - 0.2; 
-        if (pillW < 1.2) pillW = 1.2; 
-        
-        let safePhase = phase.length > 25 ? phase.substring(0, 22) + "..." : phase;
-        let pFontSize = safePhase.length > 15 ? 9 : 10; 
-
-        slide.addShape(pptx.shapes.ROUNDED_RECTANGLE, { 
-            x: currX + (boxW/2) - (pillW/2), y: 1.6, w: pillW, h: 0.35, 
-            fill: { color: themeColors.accent }, rectRadius: 0.5 
-        });
-        slide.addText(safePhase, { 
-            x: currX + (boxW/2) - (pillW/2), y: 1.6, w: pillW, h: 0.35, 
-            fontSize: pFontSize, bold: true, color: "FFFFFF", align: "center" 
-        });
-
-        slide.addShape(pptx.shapes.OVAL, { x: currX + (boxW/2) - 0.08, y: 2.12, w: 0.16, h: 0.16, fill: { color: "FFFFFF" }, line: { color: themeColors.primary, width: 2 } });
-        slide.addShape(pptx.shapes.ROUNDED_RECTANGLE, { x: currX, y: 2.4, w: boxW, h: 2.2, fill: { color: "F8F9FA" }, line: { color: themeColors.primary, width: 1.5 }, rectRadius: 0.05, shadow: { type: 'outer', color: 'E5E5E5', blur: 3, offset: 2, angle: 45 } });
-        slide.addText(heading, { x: currX + 0.1, y: 2.5, w: boxW - 0.2, h: 0.5, fontSize: 12, bold: true, color: themeColors.primary, align: "center", valign: "middle" });
-        slide.addText(impact, { x: currX + 0.1, y: 3.1, w: boxW - 0.2, h: 1.3, fontSize: 10, color: themeColors.textDark, align: "center", valign: "top", lineSpacing: 16 });
-    });
-}
-
-// ==========================================
-// 🛠️ 5. STANDARD CONTENT (DYNAMIC OVERLAP & HERO FIX)
-// ==========================================
-function renderStandardContent(slide, slideData, pptx) {
-    // 🛡️ DYNAMIC Y-AXIS
-    const isLongTitle = (slideData.title || "").length > 45;
-    let startY = isLongTitle ? 1.8 : 1.4;
-
-    if ((!slideData.content || slideData.content.length === 0) && (!slideData.highlightMetrics || slideData.highlightMetrics.length === 0)) {
-        slide.addText("Data processing in progress...", { x: 0.5, y: 2.0, w: 9.0, h: 2.0, fontSize: 24, color: '#A0A0A0', align: 'center', italic: true });
+    // 🔥 WOW SLIDE CHECK
+    const isFlat = new Set(values).size === 1;
+    if (isFlat) {
+        renderWowSlide(slide, slideData, pptx);
         return;
     }
 
-    if (slideData.highlightMetrics && slideData.highlightMetrics.length > 0) {
-        const metrics = slideData.highlightMetrics.slice(0, 4);
-        if (metrics.length === 1) {
-            const parts = metrics[0].split(" "); const bigNum = parts[0]; const desc = parts.slice(1).join(" ").toUpperCase();
-            
-            // 🛡️ DABBE KI HEIGHT AUR WIDTH BADHA DI HAI (OVERFLOW FIX)
-            slide.addShape(pptx.shapes.ROUNDED_RECTANGLE, { 
-                x: 1.5, y: startY, w: 6.0, h: 3.4, // Height increased to 3.4, Width to 6.0
-                fill: { color: "F8F9FA" }, rectRadius: 0.1, 
-                line: { color: themeColors.primary, width: 2 }, 
-                shadow: { type: 'outer', color: 'DDDDDD', blur: 5, offset: 3, angle: 45 } 
-            });
-            
-            slide.addText(bigNum, { 
-                x: 1.5, y: startY + 0.3, w: 6.0, h: 1.2, 
-                fontSize: 72, bold: true, color: themeColors.primary, align: "center" 
-            });
-            
-            slide.addShape(pptx.shapes.LINE, { 
-                x: 2.5, y: startY + 1.8, w: 4.0, h: 0, 
-                line: { color: themeColors.accent, width: 3 } 
-            });
-            
-            // 🛡️ Text Box ki height badha di (h: 1.2) aur wrap: true hai
-            slide.addText(desc, { 
-                x: 1.7, y: startY + 2.0, w: 5.6, h: 1.2, 
-                fontSize: 16, bold: true, color: themeColors.textDark, align: "center", wrap: true 
-            });
-            
-            return; 
-        } 
-        else {
-            const kpiW = 9.0 / metrics.length - 0.2;
-            metrics.forEach((metric, i) => {
-                const parts = metric.split(" "); const bigNum = parts[0]; const desc = parts.slice(1).join(" ");
-                let kpiX = 0.5 + i * (kpiW + 0.2);
-                slide.addShape(pptx.shapes.ROUNDED_RECTANGLE, { x: kpiX, y: startY, w: kpiW, h: 1.8, fill: { color: "F8F9FA" }, rectRadius: 0.05, line: { color: "EAEAEA", width: 1 }, shadow: { type: 'outer', color: 'DDDDDD', blur: 3, offset: 2, angle: 45 } });
-                slide.addShape(pptx.shapes.RECTANGLE, { x: kpiX, y: startY, w: kpiW, h: 0.06, fill: { color: themeColors.primary } }); 
-                slide.addText(bigNum, { x: kpiX, y: startY + 0.4, w: kpiW, h: 0.6, fontSize: 40, bold: true, color: themeColors.primary, align: "center" });
-                slide.addText(desc, { x: kpiX + 0.1, y: startY + 1.1, w: kpiW - 0.2, h: 0.6, fontSize: 12, color: themeColors.textDark, align: "center", valign: "top", wrap: true });
-            });
-            return;
-        }
+    // ===============================
+    // 🧠 AUTO INSIGHT
+    // ===============================
+    const maxIndex = values.indexOf(maxVal);
+    const topLabel = labels[maxIndex];
+
+    const insightText =
+        validatedData.insight?.substring(0, 100) ||
+        `${topLabel} dominates the distribution`;
+
+    // ===============================
+    // 🔥 🔥 DYNAMIC TITLE HEIGHT (MAIN FIX)
+    // ===============================
+    const titleLength = (slideData.title || "").length;
+
+    const titleHeight =
+        titleLength > 60 ? 1.4 :
+        titleLength > 40 ? 1.1 :
+        0.8;
+
+    // ===============================
+    // 🔥 DYNAMIC POSITIONS (NO OVERLAP)
+    // ===============================
+    const chartY = titleHeight + 0.6;
+    const subtitleY = titleHeight + 0.2;
+
+    // ===============================
+    // 🔥 LAYOUT SWITCH (ALT SIDES)
+    // ===============================
+    const isAlt = slideIndex % 2 !== 0;
+
+    const chartX = isAlt ? 5.2 : 0.5;
+    const insightX = isAlt ? 0.5 : 5.8;
+
+    // ===============================
+    // 📊 CHART OPTIONS
+    // ===============================
+    let chartOptions = {
+        showValue: cType !== pptx.charts.DOUGHNUT,
+        showTitle: false,
+
+        // 🔥 Highlight max value
+        chartColors: values.map(v =>
+            v === maxVal ? themeColors.primary : "E5E7EB"
+        ),
+
+        valAxisMinVal: Math.max(0, minVal - padding),
+        valAxisMaxVal: maxVal + padding,
+
+        valAxisLabelFontSize: 11,
+        catAxisLabelFontSize: 12,
+        dataLabelFontSize: 10,
+        dataLabelPosition: "outEnd",
+
+        valGridLine: {
+            color: "E0E0E0",
+            size: 1
+        },
+
+        x: chartX,
+        y: chartY, // ✅ FIXED (dynamic)
+        w: 5.0,
+        h: 3.6
+    };
+
+    // ===============================
+    // 🔥 LINE CHART FIX
+    // ===============================
+    if (cType === pptx.charts.LINE) {
+        chartOptions.lineSize = 3;
+        chartOptions.markerSize = 6;
+        chartOptions.chartColors = [themeColors.primary];
+        chartOptions.markerColor = themeColors.primary;
+        chartOptions.dataLabelPosition = "t";
     }
 
-    const contentLength = slideData.content ? slideData.content.length : 0;
-    if (contentLength === 1) {
-        slide.addShape(pptx.shapes.RECTANGLE, { x: 1.0, y: startY + 0.8, w: 0.08, h: 1.5, fill: { color: themeColors.accent } }); 
-        slide.addText(slideData.content[0], { x: 1.3, y: startY + 0.4, w: 7.5, h: 2.5, fontSize: 26, color: themeColors.primary, bold: true, valign: "middle", lineSpacing: 36, align: "center" });
-    } 
-    else if (contentLength === 2 || contentLength === 3) {
-        let stepY = contentLength === 2 ? 1.4 : 1.1; 
-        slideData.content.forEach((pt, i) => {
-            let rowY = startY + 0.2 + (i * stepY);
-            slide.addShape(pptx.shapes.ROUNDED_RECTANGLE, { x: 0.5, y: rowY, w: 9.0, h: 0.9, fill: { color: "F8F9FA" }, rectRadius: 0.05, line: { color: "EAEAEA", width: 1 }, shadow: { type: 'outer', color: 'E5E5E5', blur: 4, offset: 2, angle: 90 } });
-            slide.addShape(pptx.shapes.RECTANGLE, { x: 0.5, y: rowY, w: 0.1, h: 0.9, fill: { color: themeColors.accent } }); 
-            slide.addText(pt, { x: 0.8, y: rowY, w: 8.0, h: 0.9, fontSize: 16, color: themeColors.textDark, valign: "middle", bold: true });
+    // ===============================
+    // 🔥 DOUGHNUT FIX
+    // ===============================
+    if (cType === pptx.charts.DOUGHNUT) {
+        chartOptions.holeSize = 60;
+        chartOptions.showLegend = false;
+    } else {
+        chartOptions.showLegend = false;
+    }
+
+    // ===============================
+    // 📊 RENDER CHART
+    // ===============================
+    slide.addChart(
+        cType,
+        [
+            {
+                name: slideData.chartTitle || "Metric",
+                labels,
+                values
+            }
+        ],
+        chartOptions
+    );
+
+    // ===============================
+    // 💎 INSIGHT CARD (DYNAMIC POSITION)
+    // ===============================
+    slide.addShape(pptx.ShapeType.rect, {
+        x: insightX,
+        y: chartY - 0.1, // ✅ FIXED
+        w: 0.06,
+        h: 3.8,
+        fill: { color: themeColors.primary }
+    });
+
+    slide.addShape(pptx.ShapeType.roundRect, {
+        x: insightX + 0.1,
+        y: chartY - 0.1,
+        w: 3.6,
+        h: 3.8,
+        fill: { color: "FFFFFF" },
+        line: { color: "E5E7EB", width: 1 },
+        rectRadius: 0.08,
+        shadow: {
+            type: "outer",
+            blur: 10,
+            offset: 2,
+            opacity: 0.18
+        }
+    });
+
+    // header
+    slide.addText("💡 STRATEGIC INSIGHT", {
+        x: insightX + 0.3,
+        y: chartY + 0.2,
+        w: 3.2,
+        h: 0.4,
+        fontSize: 12,
+        bold: true,
+        color: themeColors.primary
+    });
+
+    slide.addText(`"${insightText}"`, {
+        x: insightX + 0.4,
+        y: chartY + 0.8,
+        w: 3.0,
+        h: 2.4,
+        fontSize: insightText.length > 60 ? 20 : 24,
+        bold: true,
+        color: themeColors.textDark,
+        align: "left",
+        valign: "middle",
+        lineSpacing: 30
+    });
+
+    // ===============================
+    // 🧠 SUBTITLE (DYNAMIC FIX)
+    // ===============================
+    slide.addText(`${topLabel} dominates key metrics`, {
+        x: 0.5,
+        y: subtitleY, // ✅ FIXED
+        w: 6,
+        h: 0.4,
+        fontSize: 14,
+        color: "6B7280"
+    });
+
+    // ===============================
+    // 🔥 DOUGHNUT CENTER TEXT (ALREADY GOOD)
+    // ===============================
+    if (cType === pptx.charts.DOUGHNUT) {
+
+        const centerX = chartX + (chartOptions.w / 2);
+        const centerY = chartOptions.y + (chartOptions.h / 2);
+
+        slide.addText(`${Math.round(maxVal * 100)}%`, {
+            x: centerX - 0.75,
+            y: centerY - 0.4,
+            w: 1.5,
+            h: 0.6,
+            fontSize: 34,
+            bold: true,
+            color: themeColors.primary,
+            align: "center"
         });
-    } 
-    else {
-        const half = Math.ceil(contentLength / 2);
-        const leftContent = slideData.content.slice(0, half).map(pt => ({ text: pt, options: { bullet: { color: themeColors.primary } } }));
-        const rightContent = slideData.content.slice(half).map(pt => ({ text: pt, options: { bullet: { color: themeColors.accent } } }));
 
-        slide.addShape(pptx.shapes.ROUNDED_RECTANGLE, { x: 0.5, y: startY, w: 4.2, h: 3.5, fill: { color: "F8F9FA" }, rectRadius: 0.05, line: { color: '#EAEAEA', width: 1 }, shadow: { type: 'outer', color: 'E5E5E5', blur: 4, offset: 2, angle: 45 } });
-        slide.addShape(pptx.shapes.RECTANGLE, { x: 0.5, y: startY, w: 4.2, h: 0.06, fill: { color: themeColors.primary } }); 
-        slide.addText(leftContent, { x: 0.7, y: startY + 0.3, w: 3.8, h: 3.0, fontSize: 15, color: themeColors.textDark, valign: "top", lineSpacing: 26 });
-
-        slide.addShape(pptx.shapes.ROUNDED_RECTANGLE, { x: 4.8, y: startY, w: 4.2, h: 3.5, fill: { color: "F8F9FA" }, rectRadius: 0.05, line: { color: '#EAEAEA', width: 1 }, shadow: { type: 'outer', color: 'E5E5E5', blur: 4, offset: 2, angle: 45 } });
-        slide.addShape(pptx.shapes.RECTANGLE, { x: 4.8, y: startY, w: 4.2, h: 0.06, fill: { color: themeColors.accent } }); 
-        slide.addText(rightContent, { x: 5.0, y: startY + 0.3, w: 3.8, h: 3.0, fontSize: 15, color: themeColors.textDark, valign: "top", lineSpacing: 26 });
+        slide.addText(topLabel, {
+            x: centerX - 0.75,
+            y: centerY + 0.2,
+            w: 1.5,
+            h: 0.4,
+            fontSize: 13,
+            color: "6B7280",
+            align: "center"
+        });
     }
 }
 
 // ==========================================
-// 🚀 MAIN EXECUTION ENGINE
+// 🚀 WOW SLIDE (ELITE DARK MODE - FINAL)
+// ==========================================
+function renderWowSlide(slide, slideData, pptx) {
+    Logger.info(slideData.slideNumber, `=> Executing [renderWowSlide]`);
+
+    // ===============================
+    // 🧠 DATA PARSE
+    // ===============================
+    let metricStr =
+        (slideData.highlightMetrics && slideData.highlightMetrics.length > 0)
+            ? slideData.highlightMetrics[0]
+            : "97% Growth";
+
+    let parts = metricStr.split(" ");
+    let bigNum = parts[0];
+    let subText = parts.slice(1).join(" ") || slideData.title || "Core Metric";
+
+    // ===============================
+    // 🎨 FULL BACKGROUND (NO EMPTY SPACE)
+    // ===============================
+    slide.addShape(pptx.ShapeType.rect, {
+        x: 0,
+        y: 0,
+        w: 10,
+        h: 5.63,
+        fill: { color: themeColors.darkCard || "1E2A38" }
+    });
+
+    // ===============================
+    // 🔥 LEFT ACCENT BAR (THICK + PREMIUM)
+    // ===============================
+    slide.addShape(pptx.ShapeType.rect, {
+        x: 0.7,
+        y: 1.0,
+        w: 0.2,
+        h: 3.8,
+        fill: { color: themeColors.primary }
+    });
+
+    // ===============================
+    // 💎 CARD LAYER (DEPTH EFFECT)
+    // ===============================
+    slide.addShape(pptx.ShapeType.roundRect, {
+        x: 1.2,
+        y: 1.0,
+        w: 7.8,
+        h: 3.8,
+        fill: { color: "243447" },
+        rectRadius: 0.08,
+        shadow: {
+            type: "outer",
+            blur: 12,
+            offset: 3,
+            angle: 45,
+            opacity: 0.25
+        }
+    });
+
+    // ===============================
+    // 🔢 BIG NUMBER (CENTERED PROPERLY)
+    // ===============================
+    let numSize = bigNum.length > 5 ? 72 : 96;
+
+    slide.addText(bigNum, {
+        x: 1.2,
+        y: 1.6,
+        w: 7.8,
+        h: 1.8,
+        fontSize: numSize,
+        bold: true,
+        color: "FFFFFF",
+        align: "center",   // ✅ FIXED (centered)
+        valign: "middle",
+        shadow: {
+            type: "outer",
+            blur: 6,
+            offset: 2,
+            angle: 45,
+            opacity: 0.4
+        }
+    });
+
+    // ===============================
+    // 🧾 SUBTITLE (BETTER HIERARCHY)
+    // ===============================
+    slide.addText(subText.toUpperCase(), {
+        x: 1.2,
+        y: 3.3,
+        w: 7.8,
+        h: 0.8,
+        fontSize: 22,
+        bold: true,
+        color: themeColors.primary,
+        align: "center",   // ✅ CENTERED for balance
+        valign: "top",
+        letterSpacing: 1.2
+    });
+
+    // ===============================
+    // ✨ SMALL TOP LABEL (ADDED CONTEXT)
+    // ===============================
+    slide.addText("KEY HIGHLIGHT", {
+        x: 1.2,
+        y: 1.1,
+        w: 7.8,
+        h: 0.4,
+        fontSize: 12,
+        color: "9CA3AF",
+        align: "center",
+        letterSpacing: 2
+    });
+}
+
+// ==========================================
+// 💎 ELITE CARD GRID (REPLACES BROKEN CIRCLE LAYOUT)
+// ==========================================
+function renderCardGridSlide(slide, slideData, pptx) {
+    Logger.info(slideData.slideNumber, `=> Executing [renderCardGridSlide]`);
+    const items = (slideData.gridItems || slideData.content || []).slice(0, 4);
+    if (items.length === 0) { renderStandardContent(slide, slideData, pptx); return; }
+
+    const startY = 1.4; const cardW = 4.4; const cardH = 1.6; const gap = 0.3; const marginX = 0.45;
+
+    slide.addShape(pptx.ShapeType.rect, { x: marginX, y: 0.3, w: 0.3, h: 0.05, fill: { color: themeColors.primary } });
+
+    items.forEach((item, i) => {
+        let col = i % 2; let row = Math.floor(i / 2);
+        let cX = marginX + (col * (cardW + gap)); let cY = startY + (row * (cardH + gap));
+
+        slide.addShape(pptx.ShapeType.roundRect, { x: cX, y: cY, w: cardW, h: cardH, fill: { color: "FFFFFF" }, line: { color: "#F0F0F0", width: 1 }, rectRadius: 0.04, shadow: { type: 'outer', blur: 8, offset: 3, angle: 45, color: '000000', opacity: 0.08 } });
+        slide.addShape(pptx.ShapeType.roundRect, { x: cX + 0.2, y: cY + 0.3, w: 0.5, h: 0.5, fill: { color: themeColors.primary, transparency: 90 }, rectRadius: 0.1 });
+        slide.addText(`0${i + 1}`, { x: cX + 0.2, y: cY + 0.3, w: 0.5, h: 0.5, fontSize: 14, bold: true, color: themeColors.primary, align: "center", valign: "middle" });
+
+        let heading = (typeof item === 'string' ? "Key Driver" : (item.heading || item.title || "Feature")).toUpperCase();
+        slide.addText(heading, { x: cX + 0.85, y: cY + 0.25, w: cardW - 1.1, h: 0.3, fontSize: 12, bold: true, color: themeColors.primary, align: "left", valign: "top" });
+
+        let bodyText = typeof item === 'string' ? item : (item.text || item.description || "");
+        slide.addText(smartWrap(bodyText, 100), { x: cX + 0.85, y: cY + 0.6, w: cardW - 1.1, h: 0.8, fontSize: 10, color: themeColors.textDark, align: "left", valign: "top", wrap: true });
+    });
+}
+// ==========================================
+// 💎 PREMIUM GRID CARDS (FIGMA LEVEL FINAL)
+// ==========================================
+function renderComparisonSplit(slide, slideData, pptx) {
+
+
+    let items = (slideData.content || []).map(extractText);
+
+
+    const successes = items.filter(i =>
+        !/cost|risk|loss|challenge/i.test(i)
+    ).slice(0, 3);
+
+
+    const challenges = items.filter(i =>
+        /cost|risk|loss|challenge/i.test(i)
+    ).slice(0, 3);
+
+
+    // 🔴 HERO CIRCLE
+    slide.addShape(pptx.ShapeType.ellipse, {
+        x: 1.5,
+        y: -4.2,
+        w: 7,
+        h: 7,
+        fill: { color: themeColors.primary },
+        line: { width: 0 }
+    });
+
+
+    // ✅ SINGLE TITLE (no duplicate)
+    slide.addText("SUCCESSES VS CHALLENGES", {
+        x: 2,
+        y: 1.0,
+        w: 6,
+        h: 1,
+        fontSize: 28,
+        bold: true,
+        color: "FFFFFF",
+        align: "center"
+    });
+
+
+    // ===============================
+    // LEFT COLUMN (SUCCESS)
+    // ===============================
+    slide.addText("SUCCESS", {
+        x: 1,
+        y: 2.2,
+        w: 4,
+        h: 0.5,
+        fontSize: 16,
+        bold: true,
+        color: "#2E7D32"
+    });
+
+
+    successes.forEach((text, i) => {
+        slide.addText("✅ " + text, {
+            x: 1,
+            y: 2.8 + (i * 0.6),
+            w: 4,
+            h: 0.5,
+            fontSize: 12,
+            color: "#333333"
+        });
+    });
+
+
+    // ===============================
+    // RIGHT COLUMN (CHALLENGES)
+    // ===============================
+    slide.addText("CHALLENGES", {
+        x: 5.5,
+        y: 2.2,
+        w: 4,
+        h: 0.5,
+        fontSize: 16,
+        bold: true,
+        color: "#C62828"
+    });
+
+
+    challenges.forEach((text, i) => {
+        slide.addText("⚠️ " + text, {
+            x: 5.5,
+            y: 2.8 + (i * 0.6),
+            w: 4,
+            h: 0.5,
+            fontSize: 12,
+            color: "#333333"
+        });
+    });
+}
+
+function renderExecutiveCards(slide, slideData, pptx) {
+    Logger.info(slideData.slideNumber, `=> Executing [renderExecutiveCards]`);
+    let items = deduplicateItems((slideData.gridItems || slideData.content || []).map(pt => typeof pt === 'string' ? { heading: "Insight", text: pt } : pt)).slice(0, 5);
+    if (items.length === 0) { renderStandardContent(slide, slideData, pptx); return; }
+
+
+    slide.addShape(pptx.ShapeType.rect, { x: 0, y: 3.2, w: '100%', h: 2.4, fill: { color: "F4F5F7" } });
+   
+    // 🔥 BUG FIXED: oval -> ellipse
+    slide.addShape(pptx.ShapeType.ellipse, { x: 2.5, y: -2.0, w: 5.0, h: 4.0, fill: { color: themeColors.primary } });
+   
+    slide.addText((slideData.title || "EXECUTIVE SUMMARY").toUpperCase(), { x: 2.5, y: 0.5, w: 5.0, h: 1.0, fontSize: 26, bold: true, color: "FFFFFF", align: "center", wrap: true });
+
+
+    const cardW = (9.0 - ((items.length >= 4 ? 0.15 : 0.3) * (items.length - 1))) / items.length;
+    const icons = ["🎯", "💰", "⚙️", "🤝", "📈"];
+   
+    items.forEach((item, i) => {
+        let cX = 0.5 + i * (cardW + (items.length >= 4 ? 0.15 : 0.3));
+        slide.addShape(pptx.ShapeType.roundRect, { x: cX, y: 2.0, w: cardW, h: 2.8, fill: { color: "FFFFFF" }, line: { color: "EAEAEA", width: 1 }, rectRadius: 0.05, shadow: { type: 'outer', color: 'D3D3D3', blur: 5, offset: 3, angle: 45 } });
+        slide.addText(icons[i % icons.length], { x: cX, y: 2.1, w: cardW, h: 0.4, align: "center", fontSize: 24 });
+        slide.addText(smartWrap(item.heading, 25), { x: cX + 0.1, y: 2.6, w: cardW - 0.2, h: 0.6, fontSize: 10, bold: true, color: themeColors.textDark, align: "center", wrap: true });
+        slide.addText(smartWrap(item.text, 90), { x: cX + 0.1, y: 3.25, w: cardW - 0.2, h: 1.2, fontSize: 9, color: "555555", align: "center", valign: "top", wrap: true, lineSpacing: 14 });
+        slide.addShape(pptx.ShapeType.rect, { x: cX + (cardW / 2) - 0.3, y: 4.6, w: 0.6, h: 0.03, fill: { color: themeColors.primary } });
+    });
+}
+
+function renderAccentureRedPillars(slide, slideData, pptx) {
+    Logger.info(slideData.slideNumber, `=> Executing [renderAccentureRedPillars]`);
+    let items = deduplicateItems((slideData.processItems || slideData.gridItems || slideData.content || []).map(pt => typeof pt === 'string' ? { heading: "Step", text: pt } : pt)).slice(0, 5);
+    if (items.length === 0) { renderStandardContent(slide, slideData, pptx); return; }
+
+
+    const colW = 9.0 / items.length;
+    slide.addShape(pptx.ShapeType.rect, { x: 0.5, y: 1.6, w: 9.0, h: 3.6, fill: { color: themeColors.primary } });
+
+
+    items.forEach((item, i) => {
+        let cX = 0.5 + (i * colW);
+        if (i > 0) slide.addShape(pptx.ShapeType.line, { x: cX, y: 1.8, w: 0, h: 3.2, line: { color: "FFFFFF", width: 1, dashType: "dash" }, opacity: 0.5 });
+        let circleW = 0.6; let circleX = cX + (colW / 2) - (circleW / 2);
+       
+        // 🔥 BUG FIXED: oval -> ellipse
+        slide.addShape(pptx.ShapeType.ellipse, { x: circleX, y: 1.8, w: circleW, h: circleW, fill: { color: "FFFFFF" } });
+       
+        slide.addText(`0${i + 1}`, { x: circleX, y: 1.8, w: circleW, h: circleW, fontSize: 16, bold: true, color: themeColors.primary, align: "center", valign: "middle" });
+        slide.addShape(pptx.ShapeType.triangle, { x: circleX + 0.15, y: 2.4, w: 0.3, h: 0.2, fill: { color: "FFFFFF" }, flipV: true });
+        slide.addText(smartWrap(item.heading || item.title, 22), { x: cX + 0.1, y: 2.7, w: colW - 0.2, h: 0.6, fontSize: 12, bold: true, color: "FFFFFF", align: "center", wrap: true });
+        slide.addText(smartWrap(item.text || item.impact, 80), { x: cX + 0.1, y: 3.4, w: colW - 0.2, h: 1.6, fontSize: 10, color: "FFFFFF", align: "center", valign: "top", wrap: true, lineSpacing: 14 });
+    });
+}
+
+function renderAccentureDataGrid(slide, slideData, pptx) {
+    Logger.info(slideData.slideNumber, `=> Executing [renderAccentureDataGrid]`);
+    let items = deduplicateItems((slideData.gridItems || slideData.content || []).map(pt => typeof pt === 'string' ? { heading: "Item", text: pt } : pt)).slice(0, 4);
+    if (items.length === 0) { renderStandardContent(slide, slideData, pptx); return; }
+
+
+    // 🔥 BUG FIXED: oval -> ellipse
+    slide.addShape(pptx.ShapeType.ellipse, { x: 1.0, y: -2.5, w: 8.0, h: 4.0, fill: { color: themeColors.primary } });
+   
+    slide.addText(slideData.title || "Data Volume", { x: 1.5, y: 0.4, w: 7.0, h: 0.8, fontSize: 24, bold: true, color: "FFFFFF", align: "center", wrap: true });
+
+
+    items.forEach((item, i) => {
+        let rowY = 1.8 + i * 0.9;
+        slide.addShape(pptx.ShapeType.rect, { x: 1.5, y: rowY, w: 2.0, h: 0.8, fill: { color: themeColors.primary } });
+        slide.addText((item.heading || "").toUpperCase(), { x: 1.5, y: rowY, w: 2.0, h: 0.8, fontSize: 12, bold: true, color: "FFFFFF", align: "center", valign: "middle" });
+        slide.addShape(pptx.ShapeType.rect, { x: 3.6, y: rowY, w: 5.0, h: 0.8, fill: { color: "FFFFFF" }, line: { color: "E0E0E0", width: 1 } });
+        slide.addText(item.text, { x: 3.8, y: rowY, w: 4.6, h: 0.8, fontSize: 11, color: themeColors.textDark, align: "left", valign: "middle", wrap: true });
+        slide.addShape(pptx.ShapeType.rightArrow, { x: 3.4, y: rowY + 0.3, w: 0.2, h: 0.2, fill: { color: themeColors.textDark } });
+    });
+}
+
+//done for SMART AGENDA ENGINE
+// ==========================================
+// 💎 PREMIUM INFOGRAPHIC: CHEVRON FLOW (ELITE VERSION - MAX 5)
+// ==========================================
+function renderPremiumProcessFlow(slide, slideData, pptx) {
+    Logger.info(slideData.slideNumber, `=> Executing [renderPremiumProcessFlow] (ELITE)`);
+
+
+    let items = deduplicateItems(
+        (slideData.processItems || slideData.content || [])
+        .map(pt => typeof pt === 'string' ? { heading: "Phase", text: pt } : pt)
+    );
+
+
+    // 🔥 FIX: Locked to max 5 items for the ultimate premium breathable UI
+    const maxItems = Math.min(items.length, 5);
+    items = items.slice(0, maxItems);
+
+
+    if (items.length === 0) {
+        renderStandardContent(slide, slideData, pptx);
+        return;
+    }
+
+
+    // ===============================
+    // 🔥 AUTO WIDTH + SAFETY
+    // ===============================
+    const gap = 0.08;
+    const startX = 0.4;
+    const availableW = 9.2;
+
+
+    let rawBoxW = (availableW - (gap * (maxItems - 1))) / maxItems;
+
+
+    // 🔥 Prevent collapse
+    const minWidth = 1.4;
+    const boxW = Math.max(rawBoxW, minWidth);
+
+
+    // ===============================
+    // POSITION
+    // ===============================
+    const startY = 1.6;
+    const boxH = 1.0;
+    const connectorH = 0.3;
+
+
+    const textStartY = startY + boxH + connectorH + 0.1;
+    const textBoxH = maxItems >= 5 ? 0.9 : 1.2;
+
+
+    // ===============================
+    // 🎨 PREMIUM COLORS
+    // ===============================
+    const gradientColors = [
+        themeColors.primary,
+        "E53935",
+        "EF5350",
+        "F48FB1",
+        "B0BEC5",
+        "CFD8DC"
+    ];
+
+
+    items.forEach((step, i) => {
+
+
+        let currX = startX + i * (boxW + gap);
+
+
+        // ===============================
+        // CHEVRON
+        // ===============================
+        slide.addShape(pptx.ShapeType.chevron, {
+            x: currX,
+            y: startY,
+            w: boxW,
+            h: boxH,
+            fill: {
+                color: i === 0 ? themeColors.primary : gradientColors[i]
+            },
+            shadow: {
+                type: 'outer',
+                blur: 4,
+                offset: 1,
+                angle: 45,
+                color: '000000',
+                opacity: 0.1
+            }
+        });
+
+
+        // ===============================
+        // NUMBER (FIXED POSITION)
+        // ===============================
+        let numSize = boxW < 1.6 ? 20 : 26;
+
+
+        slide.addText(`0${i + 1}`, {
+            x: currX + 0.15,
+            y: startY,
+            w: 0.4,
+            h: boxH,
+            fontSize: numSize,
+            bold: true,
+            color: "FFFFFF",
+            align: "center",
+            valign: "middle"
+        });
+
+
+        // ===============================
+        // HEADING
+        // ===============================
+        let headSize = boxW < 1.6 ? 8 : 10;
+
+
+        let safeHeading = smartWrap(
+            (step.heading || step.title || "PHASE").toUpperCase(),
+            18
+        );
+
+
+        slide.addText(safeHeading, {
+            x: currX + 0.5,
+            y: startY,
+            w: boxW - 0.6,
+            h: boxH,
+            fontSize: headSize,
+            bold: true,
+            color: "FFFFFF",
+            align: "left",
+            valign: "middle",
+            wrap: true
+        });
+
+
+        // ===============================
+        // CONNECTOR
+        // ===============================
+        slide.addShape(pptx.ShapeType.line, {
+            x: currX + (boxW / 2),
+            y: startY + boxH,
+            w: 0,
+            h: connectorH,
+            line: {
+                color: "B0BEC5",
+                width: 1.5,
+                transparency: 30
+            }
+        });
+
+
+        // ===============================
+        // DESCRIPTION
+        // ===============================
+        let textSize = boxW < 1.6 ? 9 : 11;
+
+
+        let safeText = smartWrap(
+            step.text || step.impact || step.description,
+            60
+        );
+
+
+        slide.addText(safeText, {
+            x: currX,
+            y: textStartY,
+            w: boxW - 0.1,
+            h: textBoxH,
+            fontSize: textSize,
+            color: themeColors.textDark,
+            align: "center",
+            valign: "top",
+            wrap: true,
+            lineSpacing: 14
+        });
+    });
+}
+
+//DONE
+// ==========================================
+// 💎 THE GRAND FINALE: CONCLUSION SLIDE
+// ==========================================
+function renderConclusionSlide(slide, slideData, pptx) {
+    Logger.info(slideData.slideNumber, `=> Executing [renderConclusionSlide]`);
+    slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 3.5, h: '100%', fill: { color: themeColors.primary } });
+    slide.addShape(pptx.ShapeType.rect, { x: 3.5, y: 0, w: 6.5, h: '100%', fill: { color: "F4F5F7" } });
+   slide.addText((slideData.title || "Conclusion").toUpperCase(), {
+    x: 0.5,
+    y: 1.7,
+    w: 2.8,        // 🔥 1.4 NAHI, 2.8 RAKH!
+    h: 1.5,
+    fontSize: 30,  
+    bold: true,
+    color: "FFFFFF",
+    align: "left",
+    letterSpacing: 2,
+    valign: "middle",
+    wrap: true,    // 🔥 WRAP TRUE RAKH, WARNA CUT JAYEGA!
+    autoFit: true  // 🔥 YEH BHI ZAROORI HAI
+});
+    slide.addShape(pptx.ShapeType.rect, { x: 0.5, y: 3.6, w: 1.0, h: 0.05, fill: { color: themeColors.accent } });
+
+
+    const safeContent = deduplicateItems((slideData.content || []).map(extractText)).filter(it => it.length > 2).slice(0, 3);
+    if (safeContent.length > 0) {
+        slide.addText("KEY TAKEAWAYS & ACTION ITEMS", { x: 4.2, y: 1.2, w: 5.0, h: 0.5, fontSize: 14, bold: true, color: themeColors.primary, letterSpacing: 1 });
+        safeContent.forEach((text, i) => {
+            let rowY = 2.0 + (i * 1.2);
+           
+            // 🔥 BUG FIXED: oval -> ellipse
+            slide.addShape(pptx.ShapeType.ellipse, { x: 4.2, y: rowY + 0.1, w: 0.35, h: 0.35, fill: { color: themeColors.primary } });
+           
+            slide.addText("✓", { x: 4.2, y: rowY + 0.1, w: 0.35, h: 0.35, fontSize: 14, bold: true, color: "FFFFFF", align: "center", valign: "middle" });
+            slide.addText(smartWrap(text, 115), { x: 4.8, y: rowY, w: 4.5, h: 0.8, fontSize: 14, color: themeColors.textDark, valign: "top", wrap: true, lineSpacing: 22 });
+        });
+    } else {
+        slide.addText("Ready for Execution.", { x: 4.2, y: 2.5, w: 5.0, h: 1.5, fontSize: 54, bold: true, color: themeColors.textDark, align: "center", valign: "middle" });
+    }
+}
+
+
+// ==========================================
+// 🚀 MAIN EXECUTION ENGINE (THE $10K EXECUTIVE UPGRADE)
 // ==========================================
 export const generatePPTX = async (slidesJSON, fileName = "EZ_Presentation.pptx") => {
+    Logger.divider(); Logger.info("SYSTEM", `Generating ${slidesJSON.length} slides.`); Logger.divider();
     let pptx = new pptxgen();
-    const getBgPath = (name) => path.resolve(`./assets/${name}.png`);
+   
+    const bgPaths = {
+        title: path.resolve(`./${themeColors.bgFolder}/bg-title.png`),
+        agenda: path.resolve(`./${themeColors.bgFolder}/bg-agenda.png`),
+        standard: path.resolve(`./${themeColors.bgFolder}/bg-standard.png`),
+        visual: path.resolve(`./${themeColors.bgFolder}/bg-visual.png`),
+        conclusion: path.resolve(`./${themeColors.bgFolder}/bg-conclusion.png`)
+    };
 
-    pptx.defineSlideMaster({ title: "TITLE_MASTER", background: fs.existsSync(getBgPath("bg-title")) ? { path: getBgPath("bg-title") } : { color: "FFE4E1" } });
-    pptx.defineSlideMaster({ title: "AGENDA_MASTER", background: fs.existsSync(getBgPath("bg-agenda")) ? { path: getBgPath("bg-agenda") } : { color: "FFFFFF" } });
-    pptx.defineSlideMaster({ title: "STANDARD_MASTER", background: fs.existsSync(getBgPath("bg-standard")) ? { path: getBgPath("bg-standard") } : { color: "FFFFFF" }, objects: [{ text: { text: "Generated by EZ AI Agent", options: { x: 0.5, y: 5.25, w: 3, h: 0.3, color: "A0A0A0", fontSize: 10 } } }] });
-    pptx.defineSlideMaster({ title: "VISUAL_MASTER", background: fs.existsSync(getBgPath("bg-visual")) ? { path: getBgPath("bg-visual") } : { color: "FFFFFF" }, objects: [{ text: { text: "Generated by EZ AI Agent", options: { x: 0.5, y: 5.25, w: 3, h: 0.3, color: "A0A0A0", fontSize: 10 } } }] });
-    pptx.defineSlideMaster({ title: "CONCLUSION_MASTER", background: fs.existsSync(getBgPath("bg-conclusion")) ? { path: getBgPath("bg-conclusion") } : { color: "FFE4E1" } });
-    pptx.defineSlideMaster({ title: "HERO_MASTER", background: { color: themeColors.primary }, objects: [{ text: { text: "Generated by EZ AI Agent", options: { x: 0.5, y: 5.25, w: 3, h: 0.3, color: "FFFFFF", fontSize: 10 } } }] });
+
+    pptx.defineSlideMaster({ title: "TITLE_MASTER", background: fs.existsSync(bgPaths.title) ? { path: bgPaths.title } : { color: "F8F9FA" } });
+    pptx.defineSlideMaster({ title: "AGENDA_MASTER", background: fs.existsSync(bgPaths.agenda) ? { path: bgPaths.agenda } : { color: "FFFFFF" } });
+    pptx.defineSlideMaster({ title: "STANDARD_MASTER", background: fs.existsSync(bgPaths.standard) ? { path: bgPaths.standard } : { color: "FFFFFF" } });
+    pptx.defineSlideMaster({ title: "VISUAL_MASTER", background: fs.existsSync(bgPaths.visual) ? { path: bgPaths.visual } : { color: "FFFFFF" } });
+    pptx.defineSlideMaster({ title: "CONCLUSION_MASTER", background: fs.existsSync(bgPaths.conclusion) ? { path: bgPaths.conclusion } : { color: "F8F9FA" } });
+    pptx.defineSlideMaster({ title: "HERO_MASTER", background: { color: themeColors.primary } });
+
 
     const heroSlides = slidesJSON.filter(s => s.layoutType === "HeroSlide");
     const otherSlides = slidesJSON.filter(s => s.layoutType !== "HeroSlide");
-    const finalSlidesJSON = [...otherSlides, ...heroSlides]; 
+    const finalSlidesJSON = [...otherSlides, ...heroSlides];
 
-    finalSlidesJSON.forEach((slideData) => {
+
+    finalSlidesJSON.forEach((slideData, index) => {
+        slideData.slideNumber = slideData.slideNumber || (index + 1);
+        let visualLayout = chooseVisualLayout(slideData);
         let masterTemplate = "STANDARD_MASTER";
-        
+       
         if (slideData.layoutType === "TitleSlide") masterTemplate = "TITLE_MASTER";
-        else if (slideData.layoutType === "Agenda") masterTemplate = "AGENDA_MASTER";
-        else if (["Infographic_Process", "ChartSlide", "Infographic_Comparison", "Infographic_Grid"].includes(slideData.layoutType)) masterTemplate = "VISUAL_MASTER";
+        else if (visualLayout === "AGENDA_SLIDE") masterTemplate = "AGENDA_MASTER";
+        else if (["CHEVRON_FLOW", "TIMELINE_TRACKER", "CHART_SLIDE", "COMPARISON_SPLIT", "PREMIUM_GRID", "WOW_SLIDE", "EXECUTIVE_CARDS", "ACCENTURE_RED_PILLARS", "ACCENTURE_DATA_GRID"].includes(visualLayout)) masterTemplate = "VISUAL_MASTER";
         else if (slideData.layoutType === "HeroSlide") masterTemplate = "HERO_MASTER";
         else if (slideData.layoutType === "Conclusion") masterTemplate = "CONCLUSION_MASTER";
 
+
         let slide = pptx.addSlide({ masterName: masterTemplate });
 
+
         if (slideData.layoutType === "TitleSlide") {
-            let titleText = slideData.title || "";
-            // 🛠️ CRITICAL FIX: Width (w) reduced from 5.5 to 4.4 to avoid overlapping the right-side graphic.
-            slide.addText(titleText, { 
-                x: 0.8, y: 1.2, w: 4.4, h: 1.8, 
-                fontSize: titleText.length > 40 ? 30 : 38, 
-                bold: true, color: themeColors.accent, 
-                align: "left", valign: "bottom", wrap: true 
+            slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 3.5, h: '100%', fill: { color: themeColors.primary }, shadow: { type: "outer", color: "000000", blur: 8, offset: 3, angle: 45, opacity: 0.4 } });
+           
+            // 🔥 BUG FIXED: rightTriangle -> rtTriangle
+            slide.addShape(pptx.ShapeType.rtTriangle, { x: 0, y: 0, w: 3.5, h: 2.5, fill: { color: "FFFFFF", transparency: 92 }, flipV: true });
+           
+            slide.addShape(pptx.ShapeType.rect, { x: 3.4, y: 0, w: 0.1, h: '100%', fill: { color: themeColors.accent } });
+            slide.addShape(pptx.ShapeType.roundRect, { x: 3.8, y: 1.2, w: 5.8, h: 3.6, fill: { color: "000000", transparency: 70 }, rectRadius: 0.05, shadow: { type: "outer", color: "000000", blur: 6, offset: 2, angle: 45, opacity: 0.3 } });
+
+
+            let titleText = slideData.title || "PROJECT TITAN:\nTHE ULTIMATE OVERHAUL";
+            slide.addText(titleText.toUpperCase(), {
+                x: 4.2, y: 1.5, w: 5.2, h: 2.0, fontSize: titleText.length > 30 ? 36 : 42,
+                bold: true, color: "FFFFFF", align: "left", valign: "middle",
+                wrap: true, autoFit: true, shadow: { type: "outer", color: "000000", blur: 3, offset: 1, angle: 45, opacity: 0.5 }
             });
-            if (slideData.subtitle) {
-                slide.addText(slideData.subtitle, { 
-                    x: 0.8, y: 3.2, w: 4.4, h: 1.2, 
-                    fontSize: 18, color: themeColors.textDark, 
-                    align: "left", valign: "top", wrap: true 
-                });
-            }
-        } 
-        else if (slideData.layoutType === "HeroSlide") {
-            slide.addText(`"${slideData.title}"`, { x: 0.5, y: 1.8, w: 9.0, h: 1.5, fontSize: 48, bold: true, color: "FFFFFF", align: "center", valign: "middle" });
-            slide.addShape(pptx.shapes.RECTANGLE, { x: 4.0, y: 3.4, w: 2.0, h: 0.05, fill: { color: themeColors.accent } });
-            if (slideData.subtitle) slide.addText(slideData.subtitle, { x: 1.0, y: 3.7, w: 8.0, h: 1.0, fontSize: 20, color: themeColors.accentLight, align: "center", italic: true });
+
+
+            let fallbackSubtitle = "Driving scalable transformation in a high-growth environment.";
+            let subtitleText = (slideData.subtitle && slideData.subtitle.length > 5 && !slideData.subtitle.toLowerCase().includes("chaos")) ? slideData.subtitle : fallbackSubtitle;
+            slide.addText(subtitleText, { x: 4.2, y: 3.6, w: 5.0, h: 1.0, fontSize: 16, color: "EAEAEA", align: "left", valign: "top", wrap: true });
+
+
+            let today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            slide.addText("✦", { x: 0.3, y: 0.5, w: 0.4, h: 0.5, fontSize: 24, color: themeColors.accent, align: "left" });
+            slide.addText(`EZ AI AGENT`, { x: 0.7, y: 0.5, w: 2.5, h: 0.5, fontSize: 13, bold: true, color: "FFFFFF", align: "left", letterSpacing: 1 });
+            slide.addText(`DATE: ${today}`, { x: 0.4, y: 4.4, w: 2.8, h: 0.3, fontSize: 10, bold: true, color: "FFFFFF", align: "left", letterSpacing: 1 });
+            slide.addText(`STATUS: CONFIDENTIAL`, { x: 0.4, y: 4.7, w: 2.8, h: 0.3, fontSize: 10, bold: true, color: "FFCDD2", align: "left", letterSpacing: 1 });
+        }
+        else if (slideData.layoutType === "Conclusion") {
+            renderConclusionSlide(slide, slideData, pptx);
         }
         else {
-            slide.addText(slideData.title, { x: 0.5, y: 0.2, w: 9, h: 0.8, fontSize: 32, bold: true, color: themeColors.primary, valign: "top" });
+            // ==========================================
+// 🧠 SMART TITLE CONTROL
+// ==========================================
+if (
+    slideData.layoutType !== "HeroSlide" &&
+    visualLayout !== "COMPARISON_SPLIT" && // 🔥 important
+    visualLayout !== "PREMIUM_GRID"        // optional
+) {
+    slide.addText(slideData.title, {
+        x: LAYOUT.marginX,
+        y: 0.2,
+        w: LAYOUT.maxW,
+        h: 0.8,
+        fontSize: 32,
+        bold: true,
+        color: themeColors.primary,
+        valign: "top"
+    });
+}
 
-            switch (true) {
-                case slideData.layoutType === "Agenda":
-                    renderAgenda(slide, slideData, pptx);
-                    break;
-                case slideData.requiresChart === true:
-                    renderChart(slide, slideData, pptx);
-                    break;
-                case slideData.layoutType === "Infographic_Process":
-                    renderProcessFlow(slide, slideData, pptx);
-                    break;
-                case slideData.layoutType === "Infographic_Grid" || slideData.layoutType === "Infographic_Comparison":
-                    renderGridCards(slide, slideData, pptx);
-                    break;
-                default:
-                    renderStandardContent(slide, slideData, pptx);
-                    break;
-            }
+
+        // ==========================================
+        // 🔥 VISUAL RENDER ROUTING (CLEAN & FIXED)
+        // ==========================================
+        switch (visualLayout) {
+
+
+    case "AGENDA_SLIDE":
+        renderAgenda(slide, slideData, pptx);
+        break;
+
+
+    case "CHART_SLIDE":
+        renderChart(slide, slideData, pptx);
+        break;
+
+
+    case "ACCENTURE_RED_PILLARS":
+        renderAccentureRedPillars(slide, slideData, pptx);
+        break;
+
+
+    case "ACCENTURE_DATA_GRID":
+        renderAccentureDataGrid(slide, slideData, pptx);
+        break;
+
+
+    case "EXECUTIVE_CARDS":
+        renderExecutiveCards(slide, slideData, pptx);
+        break;
+
+
+    case "CHEVRON_FLOW":
+    case "TIMELINE_TRACKER":
+        renderPremiumProcessFlow(slide, slideData, pptx);
+        break;
+
+
+    // ✅ FIXED (separate functions)
+    case "COMPARISON_SPLIT":
+        renderComparisonSplit(slide, slideData, pptx);
+        break;
+
+
+    case "PREMIUM_GRID":
+    renderCardGridSlide(slide, slideData, pptx);
+    break;
+
+
+    case "WOW_SLIDE":
+        renderWowSlide(slide, slideData, pptx);
+        break;
+
+
+    default:
+        renderStandardContent(slide, slideData, pptx);
+        break;
+}
         }
     });
+
 
     const outputDir = path.resolve("./output");
     if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir);
     const filePath = path.join(outputDir, fileName);
     await pptx.writeFile({ fileName: filePath });
+    Logger.success("SYSTEM", `File saved at: ${filePath}`);
     return filePath;
 };
 
-export { 
-    validateAndNormalizeChart, 
-    renderChart, 
-    renderProcessFlow 
-};
+
+export { validateAndNormalizeChart, renderChart, renderPremiumProcessFlow as renderProcessFlow };
+
