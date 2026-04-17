@@ -87,7 +87,7 @@ npm install
 Create a .env file in the root directory and add your Groq API Key:
 
 Code snippet
-GROQ_API_KEY=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
+GITHUB_TOKEN=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
 4. Run the Generator
 Bash
 npm start
