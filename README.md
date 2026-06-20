@@ -7,7 +7,7 @@
 > *I have also attached visual proofs (screenshots) below to demonstrate the dynamic layout engine and validation guardrails in action.*
 
 ## 📌 Executive Overview
-Building a basic LLM wrapper is easy, but building a reliable, enterprise-grade presentation system is hard. LLMs frequently hallucinate data structures or choose inappropriate visualization formats. 
+Building a basic LLM wrapper is easy, but building a reliable, enterprise-grade presentation system is hard. LLMs freqently hallucinate data structures or choose inappropriate visualization formats. 
 
 To solve this, I didn't just wrap an API. **I built an intelligent orchestration system where AI generates structured layout decisions, and my custom Node.js engine enforces strict design rules, visual hierarchy, and mathematical validation.**
 
